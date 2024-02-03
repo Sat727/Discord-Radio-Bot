@@ -66,6 +66,7 @@ async def command(interaction: discord.Interaction, radio:str):
         message = None
         print(client.voice_clients)
         await interaction.response.send_message(f"Joining {vc.name}")
+        #message = await interaction.channel.send("Loading Song...")
         player = await vc.connect()
         if client.servers[interaction.guild.id]['Host'] == None:
             client.servers[interaction.guild.id]['Host'] = interaction.user.id
@@ -158,7 +159,7 @@ async def create(interaction: discord.Interaction, name:str, private:bool):
             if not Path.exists(Path(f'./{interaction.user.id}')):
                 os.makedirs(f'{interaction.user.id}')
                 os.makedirs(f'{interaction.user.id}/{name}')
-            elif not Path.exists(Path(f'./{interaction.user.id}')):
+            elif not Path.exists(Path(f'./{interaction.user.id}/{name}')):
                 os.makedirs(f'{interaction.user.id}/{name}')
             else:
                 await interaction.response.send_message("That radio already exists. You should not be seeing this message, though. Please contact developer")
@@ -194,8 +195,14 @@ async def radio(interaction: discord.Interaction, radio:str, action:app_commands
             'preferredcodec': 'mp3',
             'preferredquality': '0',
             }],}
+                #if download == False:
+                #    YDL_OPTIONS['simulate'] = True
                     with yt.YoutubeDL(YDL_OPTIONS) as ydl:
-
+                        async def asyncrequest(url):
+                            loop = asyncio.get_event_loop()
+                            #print(str(list(entries[int(list(interaction.data.values())[0])-1].values())[0][0]))
+                            return await loop.run_in_executor(None, ydl.extract_info, url, True)
+                            #return await loop.run_in_executor(None, ydl.extract_info, (str(list(entries[int(list(interaction.data.values())[0])-1].values())[0][0])), True)
                         entries = []
                         try:
                             get(arg) 
@@ -208,10 +215,7 @@ async def radio(interaction: discord.Interaction, radio:str, action:app_commands
                                         b.stop()
                                         await interaction.response.defer()
                                         await interaction.message.edit(view=None)
-                                        async def asyncrequest():
-                                            loop = asyncio.get_event_loop()
-                                            return await loop.run_in_executor(None, ydl.extract_info, (str(list(entries[int(list(interaction.data.values())[0])-1].values())[0][0])), True)
-                                        response = await asyncrequest()
+                                        response = await asyncrequest((str(list(entries[int(list(interaction.data.values())[0])-1].values())[0][0])))
                                         message = await interaction.original_response()
                                         message = await client.get_channel(interaction.channel.id).fetch_message(message.id)
                                         await message.edit(content=f"Completed the request to download {response['title']} to {radio}, {interaction.user.mention}",embed=None)
@@ -223,22 +227,34 @@ async def radio(interaction: discord.Interaction, radio:str, action:app_commands
                                     b.add_item(item=button)
                                     c+=1
                         else:
-                            video = ydl.download(arg)
+                            response = await asyncrequest(arg)
+                            #message = await interaction.original_response()
+                            #message = await client.get_channel(interaction.channel.id).fetch_message(message.id)
+                            await interaction.followup.send(content=f"Completed the request to download {response['title']} to {radio}, {interaction.user.mention}",embed=None)
+                            #video = ydl.download(arg)
+                            return False
                     return entries
 
             entries = await ytfunction(arg=song)
             embed = discord.Embed(title="Search Results",description="Up to 3 top searches from the internet, please choose one to add to your radio", color=0x1B00FF)
             c = 1
-            for i in entries:
-                for key, value in i.items():
-                    m, s = divmod(value[1], 60)
-                    h, m = divmod(m, 60)
-                    embed.add_field(name=f"{c}. {str(key[:50])}" if len(key) >= 30 else str(key), value=f'{f"{m}m" if m > 0 else ""} {f"{s}s" if s > 0 else ""}', inline=False)
-                    c+=1
-            if not entries:
+            if entries:
+                for i in entries:
+                    for key, value in i.items():
+                        m, s = divmod(value[1], 60)
+                        h, m = divmod(m, 60)
+                        embed.add_field(name=f"{c}. {str(key[:50])}" if len(key) >= 30 else str(key), value=f'{f"{m}m" if m > 0 else ""} {f"{s}s" if s > 0 else ""}', inline=False)
+                        c+=1
+            print(entries)
+            if entries != False and type(entries) != list:
                 await interaction.followup.send("No eligible search results found. All result entries may exceed 5.5 minutes")
+            elif entries == False:
+                return
             else:
                 await interaction.followup.send(embed=embed,view=b)
 
 
+
+
+#print(search('test'))
 client.run('')
