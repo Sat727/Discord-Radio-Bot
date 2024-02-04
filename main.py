@@ -11,10 +11,9 @@ from requests import get
 from pprint import pprint
 from pathlib import Path
 import shutil
+from utils import utils
 #import threading
 #import subprocess
-
-
 
 database = sqlite3.connect("db/radio.db")
 db = database.cursor()
@@ -31,7 +30,7 @@ class aclient(discord.Client):
         print(self.guilds)
         #await tree.sync() # Should never need to unhash unless syncing fir first time
         for i in self.guilds:
-            self.servers[i.id] = {'Host': None, 'Expires': 300, 'VoiceData': None, 'LastPlayed': None, 'Radio': None}
+            self.servers[i.id] = {'Host': None, 'Expires': 300, 'VoiceData': None, 'LastPlayed': None, 'Radio': None, 'Queue': []}
         print(self.servers)
         await self.wait_until_ready()
 
@@ -42,16 +41,6 @@ tree = app_commands.CommandTree(client)
 
 @tree.command(name= 'join', description= "Joins a voice channel and plays the given radio")
 async def command(interaction: discord.Interaction, radio:str):
-    data = db.execute("SELECT * FROM radios WHERE radio = ?", (radio,)).fetchall()
-    if radio not in [i[1] for i in data if i[0] == interaction.user.id or i[2] != 1]:
-        await interaction.response.send_message("This radio does not exist, or is private")
-        return
-    print([i[0] for i in data])
-    if interaction.user.id in [i[0] for i in data]:
-        path = f"./{interaction.user.id}/{radio}/"
-    else:
-        path = f"./{data[0][0]}/{radio}/"
-    print(path)
     def cleandata():
         client.servers[interaction.guild.id]['VoiceData'] = None
         client.servers[interaction.guild.id]['Host'] = None
@@ -72,44 +61,56 @@ async def command(interaction: discord.Interaction, radio:str):
         player = await vc.connect()
         if client.servers[interaction.guild.id]['Host'] == None:
             client.servers[interaction.guild.id]['Host'] = interaction.user.id
-            #try:
-            while True:
-                if not player.is_playing():
-                    if interaction.user.id in [i.id for i in vc.members]:
-                        client.servers[interaction.guild.id]['Expires'] = 300
-                    async def PickMusic():
-                        s= []
-                        for (dirpath, dirnames, filenames) in os.walk(path):
-                            s.append(filenames)
-                        s = random.choice([i for i in s[0]])
-                        if s == client.servers[interaction.guild.id]['LastPlayed'] and len(filenames) >= 2 or s == None:
-                            return await PickMusic()
-                        else:
-                            return s
-                    song = await PickMusic()
-                    client.servers[interaction.guild.id]['LastPlayed'] = song
-                    print(path)
-                    print(song)
-                    player.play(discord.FFmpegPCMAudio(executable='./ffmpeg.exe', source=path+song))
-                    if client.servers[interaction.guild.id]['VoiceData'] == None:
-                        client.servers[interaction.guild.id]['VoiceData'] = player
-                    ###
-                    embed = discord.Embed(title=f"{interaction.user.name}'s Radio", description=f"**Only the host can interact with the bot this session.**\n\nCurrent Song: `{client.servers[interaction.guild.id]['LastPlayed'][:-4].replace('_',' ')}`\nCurrent Radio: `{client.servers[interaction.guild.id]['Radio']}`")
-                    if message == None:
-                        message = await interaction.original_response()
-                        message = await client.get_channel(interaction.channel.id).fetch_message(message.id)
-                    await message.edit(content=None, embed=embed)
-                else:
-                    if interaction.user.id not in [i.id for i in vc.members]:
-                        client.servers[interaction.guild.id]['Expires'] -= 3
-                    if client.servers[interaction.guild.id]['Expires'] <= 0:
+            try:
+                client.servers[interaction.guild.id]['Radio'] = radio
+                while True:
+                    radio = client.servers[interaction.guild.id]['Radio']
+                    data = db.execute("SELECT * FROM radios WHERE radio = ?", (radio,)).fetchall()
+                    if not utils.checkradio(interaction, radio):
                         await player.disconnect(), cleandata()
+                        await interaction.channel.send("This radio does not exist, or is private. If you are seeing this, it means the owner has made it private while streaming")
                         return
-                    await asyncio.sleep(3)
-            #    except Exception as e:
-            #    await player.disconnect(), cleandata()
-            #    print("Unknown error, crashed"), print(e), cleandata()
-            #    return False
+                    #print([i[0] for i in data])
+                    if interaction.user.id in [i[0] for i in data]:
+                        path = f"./{interaction.user.id}/{radio}/"
+                    else:
+                        path = f"./{data[0][0]}/{radio}/"
+                    if not player.is_playing():
+                        if interaction.user.id in [i.id for i in vc.members]:
+                            client.servers[interaction.guild.id]['Expires'] = 300
+                        async def PickMusic():
+                            s= []
+                            for (dirpath, dirnames, filenames) in os.walk(path):
+                                s.append(filenames)
+                            s = random.choice([i for i in s[0]])
+                            if s == client.servers[interaction.guild.id]['LastPlayed'] and len(filenames) >= 2 or s == None:
+                                return await PickMusic()
+                            else:
+                                return s
+                        song = await PickMusic()
+                        client.servers[interaction.guild.id]['LastPlayed'] = song
+                        print(path)
+                        print(song)
+                        player.play(discord.FFmpegPCMAudio(executable='./ffmpeg.exe', source=path+song))
+                        if client.servers[interaction.guild.id]['VoiceData'] == None:
+                            client.servers[interaction.guild.id]['VoiceData'] = player
+                        ###
+                        embed = discord.Embed(title=f"{interaction.user.name}'s Radio", description=f"**Only the host can interact with the bot this session.**\n\nCurrent Song: `{client.servers[interaction.guild.id]['LastPlayed'][:-4].replace('_',' ')}`\nCurrent Radio: `{client.servers[interaction.guild.id]['Radio']}`")
+                        if message == None:
+                            message = await interaction.original_response()
+                            message = await client.get_channel(interaction.channel.id).fetch_message(message.id)
+                        await message.edit(content=None, embed=embed)
+                    else:
+                        if interaction.user.id not in [i.id for i in vc.members]:
+                            client.servers[interaction.guild.id]['Expires'] -= 3
+                        if client.servers[interaction.guild.id]['Expires'] <= 0:
+                            await player.disconnect(), cleandata()
+                            return
+                        await asyncio.sleep(3)
+            except Exception as e:
+                print("Unknown error, crashed"), print(e)
+                await player.disconnect(), cleandata()
+                return
 
 @tree.command(name="leave",description='Do stuff')
 async def leave(interaction:discord.Interaction):
@@ -118,6 +119,16 @@ async def leave(interaction:discord.Interaction):
         await interaction.response.send_message("Disconnected")
         client.servers[interaction.guild.id]['VoiceData'] = None
         client.servers[interaction.guild.id]['Host'] = None
+    else:
+        await interaction.response.send_message("You are not the host")
+
+@tree.command(name="skip",description='Do stuff')
+async def skip(interaction:discord.Interaction):
+    if client.servers[interaction.guild.id]['LastPlayed'] == None:
+        await interaction.response.send_message("No song playing!")
+    if client.servers[interaction.guild.id]['Host'] == interaction.user.id:
+        client.servers[interaction.guild.id]['VoiceData'].stop()
+        await interaction.response.send_message(f"Skipped {client.servers[interaction.guild.id]['LastPlayed'][:-4].replace('_',' ')}") #.split('-')[1:][0].replace('_','')}")
     else:
         await interaction.response.send_message("You are not the host")
 
@@ -262,22 +273,10 @@ async def radio(interaction: discord.Interaction, radio:str, action:app_commands
                     def __init__(self):
                         super().__init__(timeout=None)
                 path = f"./{interaction.user.id}/{radio}"
-                s = []
                 for (dirpath, dirnames, filenames) in os.walk(path):
                     s = [i for i in filenames]
                 index = 0
                 chunks = [s[i:i + 23] for i in range(0, len(s), 23)]
-                
-                #async def changeindex(buttoninteraction, value, index):
-                #    if interaction.user.id == buttoninteraction.user.id:
-                #        if index < 0:
-                #            index = len(chunks)
-                #            return index
-                #        elif index > len(chunks):
-                #            return 0
-                #        if value == '0':
-                #            index -= 1
-                #    return index
                 async def changeindex(buttoninteraction):
                     if buttoninteraction.user.id == interaction.user.id:
                         nonlocal index
