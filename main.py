@@ -258,35 +258,88 @@ async def radio(interaction: discord.Interaction, radio:str, action:app_commands
                 else:
                     await interaction.followup.send(embed=embed,view=b)
             if action.name == 'Remove':
+                class ButtonView(discord.ui.View):
+                    def __init__(self):
+                        super().__init__(timeout=None)
                 path = f"./{interaction.user.id}/{radio}"
-                s = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51]
+                s = []
                 for (dirpath, dirnames, filenames) in os.walk(path):
-                    s.append(filenames)
+                    s = [i for i in filenames]
                 index = 0
-                #class IterableEmbed():
-                #    def __init__(self):
-                #        super().__init__(command_prefix='!', intents=discord.Intents.all())
-                #        self.synced = False
-                #        self.servers = {}
-                #        self.bot = discord
-                #        self.index = 0
-                #        self.chunks = [s[i:i + 25] for i in range(0, len(s), 25)]
-                async def changeindex(self, buttoninteraction, value, index):
-                    if interaction.user.id == buttoninteraction.user.id:
-                        if value == '0':
-                            index -= 1
-                    print(changeindex())
-                    #data = db.execute("SELECT * FROM radios").fetchall()
-                    #if not Path.exists(Path(f'./{interaction.user.id}/{radio}')) or radio not in [i[1] for i in data if i[0] == interaction.user.id]:
-                    #    await interaction.response.send_message("That radio does not exist, or you do not own it")
-                    #else:
-                    #    db.execute("DELETE FROM radios WHERE radio = ? ", (radio))
-                    #    shutil.rmtree(f'./{interaction.user.id}/{radio}')
-                    embed = discord.Embed(f"Listed songs for {radio}")
-                await interaction.response.send_message("")
+                chunks = [s[i:i + 23] for i in range(0, len(s), 23)]
+                
+                #async def changeindex(buttoninteraction, value, index):
+                #    if interaction.user.id == buttoninteraction.user.id:
+                #        if index < 0:
+                #            index = len(chunks)
+                #            return index
+                #        elif index > len(chunks):
+                #            return 0
+                #        if value == '0':
+                #            index -= 1
+                #    return index
+                async def changeindex(buttoninteraction):
+                    if buttoninteraction.user.id == interaction.user.id:
+                        nonlocal index
+                        print(index)
+                        button_value = list(buttoninteraction.data.values())[0]
+                        if button_value == '>':
+                            if index+2 > len(chunks):
+                                print('setting to zero')
+                                index = 0
+                            else:
+                                index+=1
+                        else:
+                            if button_value == '<':
+                                if index-1 < 0:
+                                    index = len(chunks)-1
+                                else:
+                                    index-=1
+                        view, embed, index = await buttonEmbed(index)
+                        print(index)
+                        #message = await buttoninteraction.original_response()
+                        await buttoninteraction.response.defer()
+                        message = await interaction.original_response()
+                        message = await client.get_channel(interaction.channel.id).fetch_message(message.id)
+                        await message.edit(view=view, embed=embed)
+                    else:
+                        await buttoninteraction.response.send_message("You do not have permission", ephemeral=True)
+                async def deletemusic(buttoninteraction):
+                    if buttoninteraction.user.id == interaction.user.id:
+                        if Path.exists(Path(f'./{buttoninteraction.user.id}/{radio}/{chunks[index][int(list(buttoninteraction.data.values())[0])]}')):
+                           os.remove(f'./{buttoninteraction.user.id}/{radio}/{chunks[index][int(list(buttoninteraction.data.values())[0])]}')
+                           await buttoninteraction.response.send_message(f"Successfully deleted {chunks[index][int(list(buttoninteraction.data.values())[0])]}")
+                    else:
+                        await buttoninteraction.response.send_message("You do not have permission", ephemeral=True)
+                async def buttonEmbed(index):
+                    b = ButtonView()
+                    embed = discord.Embed(title=f'Song library', description="Select a song to delete")
+                    #index = changeindex((buttoninteraction.data.values())[0], index)
+                    c = 0
+                    if len(chunks) > 1:
+                        iteratebutton = discord.ui.Button()
+                        iteratebutton.label = "◀"
+                        iteratebutton.custom_id = '<'
+                        iteratebutton.callback = changeindex
+                        b.add_item(iteratebutton)
+                    for i in chunks[index]:
+                        button = discord.ui.Button()
+                        button.label = c+1
+                        button.custom_id = str(c)
+                        b.add_item(button)
+                        button.callback = deletemusic
+                        embed.add_field(name=f'{c+1}.', value=i[:-4].replace('_',' '))
+                        c+=1
+                    if len(chunks) > 1:
+                        iteratebutton = discord.ui.Button()
+                        iteratebutton.label = "▶️"
+                        iteratebutton.custom_id = '>'
+                        iteratebutton.callback = changeindex
+                        b.add_item(iteratebutton)
+                    return b, embed, index
+                view, embed, index = await buttonEmbed(index)
+                await interaction.response.send_message(embed=embed, view=view)
 
-
-range
 
 #print(search('test'))
 client.run('')
