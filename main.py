@@ -132,16 +132,6 @@ async def skip(interaction:discord.Interaction):
     else:
         await interaction.response.send_message("You are not the host")
 
-@tree.command(name="skip",description='Do stuff')
-async def skip(interaction:discord.Interaction):
-    if client.servers[interaction.guild.id]['LastPlayed'] == None:
-        await interaction.response.send_message("No song playing!")
-    if client.servers[interaction.guild.id]['Host'] == interaction.user.id:
-        client.servers[interaction.guild.id]['VoiceData'].stop()
-        await interaction.response.send_message(f"Skipped {client.servers[interaction.guild.id]['LastPlayed'][:-4].replace('_',' ')}") #.split('-')[1:][0].replace('_','')}")
-    else:
-        await interaction.response.send_message("You are not the host")
-
 @tree.command(name='sync', description='Owner only')
 async def sync(interaction: discord.Interaction):
     if client.application.owner.id == interaction.user.id:
