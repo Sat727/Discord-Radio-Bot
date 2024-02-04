@@ -39,7 +39,7 @@ class aclient(discord.Client):
 client = aclient()
 tree = app_commands.CommandTree(client)
 
-@tree.command(name= 'join', description= "Joins a voice channel and plays the given radio")
+@tree.command(name= 'play', description= "Joins a voice channel and plays the given radio")
 async def command(interaction: discord.Interaction, radio:str):
     def cleandata():
         client.servers[interaction.guild.id]['VoiceData'] = None
@@ -54,6 +54,17 @@ async def command(interaction: discord.Interaction, radio:str):
         return
 
     if vc:
+        if client.servers[interaction.guild.id]['Host'] != None and interaction.user.id == client.servers[interaction.guild.id]['Host']:
+            if await utils.checkradio(interaction, radio):
+                client.servers[interaction.guild.id]['Radio'] = radio
+                client.servers[interaction.guild.id]['VoiceData'].stop()
+                await interaction.response.send_message(f"Changed the radio to {radio}")
+                return
+            else:
+                await interaction.response.send_message("That radio does not exist, or is private")
+        #await interaction.response.send_message("You are not host")
+            
+
         message = None
         print(client.voice_clients)
         await interaction.response.send_message(f"Joining {vc.name}")
@@ -66,7 +77,7 @@ async def command(interaction: discord.Interaction, radio:str):
                 while True:
                     radio = client.servers[interaction.guild.id]['Radio']
                     data = db.execute("SELECT * FROM radios WHERE radio = ?", (radio,)).fetchall()
-                    if not utils.checkradio(interaction, radio):
+                    if not await utils.checkradio(interaction, radio):
                         await player.disconnect(), cleandata()
                         await interaction.channel.send("This radio does not exist, or is private. If you are seeing this, it means the owner has made it private while streaming")
                         return
@@ -89,8 +100,6 @@ async def command(interaction: discord.Interaction, radio:str):
                                 return s
                         song = await PickMusic()
                         client.servers[interaction.guild.id]['LastPlayed'] = song
-                        print(path)
-                        print(song)
                         player.play(discord.FFmpegPCMAudio(executable='./ffmpeg.exe', source=path+song))
                         if client.servers[interaction.guild.id]['VoiceData'] == None:
                             client.servers[interaction.guild.id]['VoiceData'] = player
@@ -131,6 +140,7 @@ async def skip(interaction:discord.Interaction):
         await interaction.response.send_message(f"Skipped {client.servers[interaction.guild.id]['LastPlayed'][:-4].replace('_',' ')}") #.split('-')[1:][0].replace('_','')}")
     else:
         await interaction.response.send_message("You are not the host")
+
 
 @tree.command(name='sync', description='Owner only')
 async def sync(interaction: discord.Interaction):
@@ -251,7 +261,6 @@ async def radio(interaction: discord.Interaction, radio:str, action:app_commands
                             h, m = divmod(m, 60)
                             embed.add_field(name=f"{c}. {str(key[:50])}" if len(key) >= 30 else str(key), value=f'{f"{m}m" if m > 0 else ""} {f"{s}s" if s > 0 else ""}', inline=False)
                             c+=1
-                print(entries)
                 if entries != False and type(entries) != list:
                     await interaction.followup.send("No eligible search results found. All result entries may exceed 5.5 minutes")
                 elif entries == False:
@@ -270,7 +279,6 @@ async def radio(interaction: discord.Interaction, radio:str, action:app_commands
                 async def changeindex(buttoninteraction):
                     if buttoninteraction.user.id == interaction.user.id:
                         nonlocal index
-                        print(index)
                         button_value = list(buttoninteraction.data.values())[0]
                         if button_value == '>':
                             if index+2 > len(chunks):
@@ -285,7 +293,6 @@ async def radio(interaction: discord.Interaction, radio:str, action:app_commands
                                 else:
                                     index-=1
                         view, embed, index = await buttonEmbed(index)
-                        print(index)
                         #message = await buttoninteraction.original_response()
                         await buttoninteraction.response.defer()
                         message = await interaction.original_response()
@@ -330,5 +337,4 @@ async def radio(interaction: discord.Interaction, radio:str, action:app_commands
                 await interaction.response.send_message(embed=embed, view=view)
 
 
-#print(search('test'))
 client.run('')
